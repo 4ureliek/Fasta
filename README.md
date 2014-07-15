@@ -17,8 +17,8 @@ fasta_extract_random.pl [v1.0]
 	    -i <file.fa>  -->  fasta file to loop through. Need to be .fa or .fasta
 	    
 	    ONE OF -n or -p MUST BE CHOSEN
-	    -n <X>        -->  number of sequences to extract
-	    -p <X>        -->  percentage of sequences to extract 
+	    -n <X>   -->  number of sequences to extract
+	    -p <X>   -->  percentage of sequences to extract 
 	                       (eg if 1000 sequences in file.fa and 10 is chosen, 100 sequences are extracted).
 		 
 	    OPTIONAL ARGUMENTS (flagged by brackets [...] around each of them)
