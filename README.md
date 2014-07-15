@@ -1,7 +1,7 @@
 Fasta
 =====
 
-Perl scripts dealing with fasta files
+Perl scripts dealing with fasta files.
 
 ========================================================
 fasta_extract_random.pl [v1.0]
@@ -29,3 +29,17 @@ fasta_extract_random.pl [v1.0]
 	                  (XX-XX are se
 	    -v       -->  verbose mode, make the script talks to you      
 	    -h|help  -->  this usage\n\n";
+
+
+========================================================
+fasta_Cut_based-on-Mo.pl
+
+	perl <scriptname.pl> <FastaFile> <File size in Mo>
+	
+	This script will rewrite a fasta file (typically, a genome) in pieces of X Mo (~correlated to the total length of sequences)
+	
+	<FastaFile>       --> (STRING)  Input file in fasta format (typically, a genome)
+	<File size in Mo> --> (INTEGER) To set X, the size of output files in Mo 
+	
+	NB: - if cut results in more than 100 files, you should then replace \"%02d\" by \"%03d\" at line 39.
+	    - if some sequences are longer than the set size in Mo, then files containing them will be bigger anyway since the script won't cut a sequence.
