@@ -84,7 +84,7 @@ foreach my $id (@slice) {
 	if  (! $seq) {
 		print "\n     ERROR: $id not found in $file\n" 
 	} else {
-		print $outfh ">$id\n$seq\n";
+		print $outfh "$id\n$seq\n";
 		$ids{$id}=1;
 	}
 }
@@ -103,7 +103,7 @@ if ($getc) {
 		if  (! $seq) {
 			print "\n     ERROR: $id not found in $file\n" 
 		} elsif (! $ids{$id}) {
-			print $outcfh ">$id\n$seq\n";
+			print $outcfh "$id\n$seq\n";
 		}
 	}
 	close $outcfh;
