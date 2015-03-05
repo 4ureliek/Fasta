@@ -4,7 +4,7 @@ Fasta
 Perl scripts dealing with fasta files.
 
 ========================================================
-fasta_extract_random.pl [v1.0]
+fasta_extract_random.pl [v1.1]
 
     WHAT IT DOES
 	This script will go through fasta file and randomly extract a total of X sequences
