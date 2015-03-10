@@ -4,6 +4,19 @@ Fasta
 Perl scripts dealing with fasta files.
 
 ========================================================
+fasta_Cut_based-on-Mo.pl
+
+	perl <scriptname.pl> <FastaFile> <File size in Mo>
+	
+	This script will rewrite a fasta file (typically, a genome) in pieces of X Mo (~correlated to the total length of sequences)
+	
+	<FastaFile>       --> (STRING)  Input file in fasta format (typically, a genome)
+	<File size in Mo> --> (INTEGER) To set X, the size of output files in Mo 
+	
+	NB: - if cut results in more than 100 files, you should then replace \"%02d\" by \"%03d\" at line 39.
+	    - if some sequences are longer than the set size in Mo, then files containing them will be bigger anyway since the script won't cut a sequence.
+
+========================================================
 fasta_extract_random.pl [v1.1]
 
     WHAT IT DOES
@@ -29,16 +42,31 @@ fasta_extract_random.pl [v1.1]
     -v       => (BOOL)  verbose mode, make the script talks to you / version if only option
     -h|help  => (BOOL)  this usage
 
-
 ========================================================
-fasta_Cut_based-on-Mo.pl
 
-	perl <scriptname.pl> <FastaFile> <File size in Mo>
-	
-	This script will rewrite a fasta file (typically, a genome) in pieces of X Mo (~correlated to the total length of sequences)
-	
-	<FastaFile>       --> (STRING)  Input file in fasta format (typically, a genome)
-	<File size in Mo> --> (INTEGER) To set X, the size of output files in Mo 
-	
-	NB: - if cut results in more than 100 files, you should then replace \"%02d\" by \"%03d\" at line 39.
-	    - if some sequences are longer than the set size in Mo, then files containing them will be bigger anyway since the script won't cut a sequence.
+fasta_keep-unique.pl [v2.0]
+
+	WHAT IT DOES
+    This script will filter out non unique sequences (based on sequences, not names)
+    The first occurence of a sequence will be kept, so order of input files will matter
+    There will be 2 output files per input file: 
+      - sequences that are unique when all files are considered
+      - removed sequences
+    Use -cat to get concatenated files
+
+    
+    perl <scriptname.pl> -i <in.fa> [-all] [-v] [-h|help]
+     
+    MANDATORY	
+    -i <X>   => (STRING) fasta file. If several, separate with ,
+                         Typically: -i inputfile1,inputfile2,inputfileN
+    
+    OPTIONAL
+    -cat     => (BOOL)   To concatenate all unique sequences as well as all removed sequences (-> get 2 output files for the run)
+    -out     => (STRING) To rename the output names when -cat is chosen
+                         default = name of the first file in -i is used
+    -rm      => (BOOL)   To remove single files after they are concatenated
+    -v       => (BOOL)   verbose mode, make the script talks to you / version if only option
+    -h|help  => (BOOL)   this usage
+
+
