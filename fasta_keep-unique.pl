@@ -78,7 +78,7 @@ if (($cat) && ($in =~ /,/)) {
 	cat_out($out,$rem,$v);
 }
 	
-print STDERR " --- Done\n" if ($v);
+print STDERR " --- Done\n\n" if ($v);
 exit;
 ##########################################################################################################
 # SUBROUTINES
@@ -112,6 +112,7 @@ sub keep_uniq {
 			(defined $seqs->desc)?($id  = $seqs->display_id."\t".$seqs->desc):($id  = $seqs->display_id); #keep description
 			my $seq = $seqs->seq;
 			if ($already{$seq}) { #sequences with the same sequences was already printed
+				$io_same->write_seq($seqs); #print the seqs that are being removed
 				print $dfh "$f\t$id\t$already{$seq}\n";
 				$rem++;
 			} else {
