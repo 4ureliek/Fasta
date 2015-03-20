@@ -24,7 +24,7 @@ my $version = "1.1";
 # UPDATES
 my $changelog = "
 #   - v1.0 = 17 Mar 2015
-#   - v1.1 = 18 Mar 2015
+#   - v1.1 = 18-20 Mar 2015
 #             - bug fix: filters while parsing
 #             - cat option was somehow making a gigantic file
 \n";
@@ -376,7 +376,7 @@ sub parse_blast {
 #----------------------------------------------------------------------------
 sub parse_blast_prep_out {
 	my $in = shift;
-	open(my $fh,">",$in) or confess "\n      ERROR (Sub parse_blast_prep_out): Failed to open to write $in $!";
+	open(my $fh,">>",$in) or confess "\n      ERROR (Sub parse_blast_prep_out): Failed to open to write $in $!";
 	print $fh "#Q stands for query and H for hit; there can be several hsp per hit\n\n";
 	print $fh "#Q_name\t";	
 	print $fh "Q_len\t";	
