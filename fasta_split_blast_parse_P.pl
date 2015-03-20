@@ -20,21 +20,25 @@ use Bio::SearchIO;
 select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
 select((select(STDOUT), $|=1)[0]); #make STDOUT buffer flush immediately
 
-my $version = "1.0";
-
+my $version = "1.1";
 # UPDATES
 my $changelog = "
 #   - v1.0 = 17 Mar 2015
+#   - v1.1 = 18 Mar 2015
+#             - bug fix: filters while parsing
+#             - cat option was somehow making a gigantic file
 \n";
 
 my $usage = "\nUsage [$version]: 
-    perl <scriptname.pl> -in <in.fa> -db <db.fa> -type <blast_type> [-blast <path/bin>] [-dbtype <db_type>] [-eval <evalue>] [-parse] [-s <score>] [-e <evalue>] [-id <%id>] [-top <X>] [-cat] [-cpu <number>] [-v]
+    perl <scriptname.pl> -in <in.fa> -db <db.fa> -type <blast_type> [-blast <path/bin>] [-dbtype <db_type>] 
+                        [-eval <evalue>] [-parse] [-s <score>] [-e <evalue>] [-id <%id>] [-top <X>] [-cat] 
+                        [-cpu <number>] [-v] [-chlog] [-h]
 	
-	This script will blast a fasta file against the fasta file set with -db (set the blast type with -type)
-	To allow threading, the input fasta file is split in one file per sequence
-	Outputs (standard ones with alignments in the files) can be parsed to be in table format if -parse if chosen, 
-	with optional filtering using -s, -e, -id (and/or): a hit will be kept if at least one of the condition is met
-	Additionally, like the tabular output of blasts, the top X hits can be extracted (independently of filtering)
+    This script will blast a fasta file against the fasta file set with -db (set the blast type with -type)
+    To allow threading, the input fasta file is split in one file per sequence
+    Outputs (standard ones with alignments in the files) can be parsed to be in table format if -parse if chosen, 
+    with optional filtering using -s, -e, -id (and/or): a hit will be kept if at least one of the condition is met
+    Additionally, like the tabular output of blasts, the top X hits can be extracted (independently of filtering)
 	
 
     MANDATORY ARGUMENT:	
@@ -131,6 +135,7 @@ mkdir ($outpath."/top$top", 0755) or die "\n      ERROR (main, prep): can not mk
 print STDERR "        -> $outpath and sub directories created\n" if ($v);
 
 ($parse)?($parse="y"):($parse="n");
+($cat)?($cat="y"):($cat="n");
 
 #makeblastdb
 print STDERR "      - Doing makeblastdb on $db\n" if ($v);
@@ -162,10 +167,10 @@ print STDERR "       ...Splitting done => $fa_list_nb sequences in $fa_list_nb f
 #start threads
 print STDERR "\n --- Now main steps (starting $cpus threads)\n" if ($v);
 for(my $i = 1; $i < $cpus; $i++){
-    threads->create({ 'context' => 'scalar' }, \&blast_and_parse, \@fa_list, \$fa_list_nb, \@fa_done, \@fa_hits, \$db, \$type, \$blast, \$eval, \$outpath, \$parse, \$p_s, \$p_e, \$p_id, \$top, \$v);
+    threads->create({ 'context' => 'scalar' }, \&blast_and_parse, \@fa_list, \$fa_list_nb, \@fa_done, \@fa_hits, \$db, \$type, \$blast, \$eval, \$outpath, \$parse, \$p_s, \$p_e, \$p_id, \$top, \$cat, \$v);
 }
 #run threads
-blast_and_parse(\@fa_list, \$fa_list_nb, \@fa_done, \@fa_hits, \$db, \$type, \$blast, \$eval, \$outpath, \$parse, \$p_s, \$p_e, \$p_id, \$top, \$v);
+blast_and_parse(\@fa_list, \$fa_list_nb, \@fa_done, \@fa_hits, \$db, \$type, \$blast, \$eval, \$outpath, \$parse, \$p_s, \$p_e, \$p_id, \$top, \$cat, \$v);
 
 #clean threads
 print STDERR "\n --- Cleaning the $cpus threads\n" if ($v);
@@ -181,13 +186,6 @@ foreach my $hit (@fa_hits) {
 	$totfahits++;
 }
 
-#cat files if relevant
-if ($parse eq "y") {
-	print STDERR "\n --- Concatenating parsed blast outputs\n" if (($cat) && ($v));
-	cat_parsed($outpath."/parsed") if ($cat);
-	cat_parsed($outpath."/top$top") if (($top ne "na") && ($cat));
-}
-
 print STDERR "\n --- Script done\n" if ($v);
 print STDERR "     --> $totfadone sequences processed\n" if ($v);
 print STDERR "     --> $totfahits sequences had hits in $db\n" if ($v);
@@ -201,10 +199,10 @@ exit;
 #----------------------------------------------------------------------------
 # MAIN SUBROUTINE:
 # Threaded actions, loop on input files, fasta file split
-# blast_and_parse(\@fa_list, \$fa_list_nb, \@fa_done, \@fa_hits, \$db, \$type, \$blast, \$eval, \$outpath, \$parse, \$p_s, \$p_e, \$p_id, \$top, \$v);
+# blast_and_parse(\@fa_list, \$fa_list_nb, \@fa_done, \@fa_hits, \$db, \$type, \$blast, \$eval, \$outpath, \$parse, \$p_s, \$p_e, \$p_id, \$top, \$cat, \$v);
 #----------------------------------------------------------------------------
 sub blast_and_parse {
-    my ($fa_list,$fa_list_nb,$fa_done,$fa_hits, $db,$type,$blast,$eval,$outpath,$parse,$p_s,$p_e,$p_id,$top,$v) = @_; 	
+    my ($fa_list,$fa_list_nb,$fa_done,$fa_hits, $db,$type,$blast,$eval,$outpath,$parse,$p_s,$p_e,$p_id,$top,$cat,$v) = @_; 	
 
 	while(defined(my $fa = shift @$fa_list)) {
 #   FAFILE: while($$fa_list_nb > 0){
@@ -221,7 +219,7 @@ sub blast_and_parse {
 		print STDERR "        ..done: $$type $fa -> $out (thr ".threads->tid().")\n" if ($$v);	
 		
 		#parse if relevant
-		my $check = parse_blast($out,$outpath,$p_s,$p_e,$p_id,$top,$v) if ($$parse eq "y");
+		my $check = parse_blast($out,$outpath,$p_s,$p_e,$p_id,$top,$cat,$v) if ($$parse eq "y");
 		push(@$fa_hits,$fa) unless ($check >= 1);
 		
 		#done for this file
@@ -280,11 +278,11 @@ sub split_fasta {
 
 #----------------------------------------------------------------------------
 # parse blast output
-# my $check = parse_blast($out,$outpath,$p_s,$p_e,$p_id,$top,$v) if ($$parse eq "y");
+# my $check = parse_blast($out,$outpath,$p_s,$p_e,$p_id,$top,$cat,$v) if ($$parse eq "y");
 # called by blast_and_parse
 #----------------------------------------------------------------------------
 sub parse_blast {
-	my ($blastout,$outpath,$s,$e,$i,$top,$v) = @_;	
+	my ($blastout,$outpath,$s,$e,$i,$top,$cat,$v) = @_;	
  	print STDERR "        ..in progress: parsing $blastout (thr ".threads->tid().")\n" if ($$v);
 	my $written = 0;
 	
@@ -304,79 +302,70 @@ sub parse_blast {
 		parse_blast_prep_out($tops);
 		open($tops_fh,">>",$tops) or confess "\n      ERROR (Sub parse_blast): Failed to open to write $tops $!";
 	}
+	
+	my ($catp, $catpfh, $catt, $cattfh);
+	if ($$cat eq "y") {
+		$catp = $$outpath."/_parsed.all.tab";
+		$catt = $$outpath."/_top".$$top."all.tab" if ($$top ne "na");			
+		parse_blast_prep_out($catp);
+		parse_blast_prep_out($catt) if ($$top ne "na");
+		open($catpfh,">>",$catp) or confess "\n      ERROR (Sub parse_blast): Failed to open to write $catp $!";
+		open($cattfh,">>",$catt) or confess "\n      ERROR (Sub parse_blast): Failed to open to write $catt $!" if ($$top ne "na");
+	}
+	
 	#now loop blast output
 	my $Bout = new Bio::SearchIO(-format => 'blast', -file => $blastout); 	
 	while( my $result = $Bout->next_result ) {
 		my $Qname = $result->query_name;
-		READ: while( my $hit = $result->next_hit ) {	
+		HIT: while( my $hit = $result->next_hit ) {	
 			my $Rlen = $result->query_length;
 			while( my $hsp = $hit->next_hsp ) {	
 				my $eval = $hit->significance;
 				my $score = $hit->bits;
-				my $id = $hsp->percent_identity;
+				my $id = $hsp->percent_identity;				
+				my $toprint = 
+					$Qname."\t".
+					$result->query_length."\t".	
+					$hit->name."\t".				
+					$hit->description."\t".
+					$hit->length."\t".
+					$hit->significance."\t".
+					$hit->raw_score."\t".
+					$hit->bits."\t".
+					$hit->num_hsps."\t".
+					$hsp->evalue."\t".
+					$hsp->percent_identity."\t".
+					$hsp->length('total')."\t".
+					$hsp->length('query')."\t".
+					$hsp->start('query')."\t".
+					$hsp->end('query')."\t".
+					$hsp->strand('query')."\t".
+					$hsp->length('hit')."\t".
+					#If need to extract the hsp sequences
+					$hit->name."\t".
+					$hsp->start('hit')."\t".
+					$hsp->end('hit')."\t".
+					$hsp->strand('hit')."\t".				
+					"\n";
 				
+				print $tops_fh $toprint if (($$top ne "na") && ($written < $$top));
+				print $cattfh $toprint if (($$cat eq "y") && ($$top ne "na") && ($written < $$top));
+				$written++;
+									
 				#filter if relevant
-				unless (($$e eq "na") && ($$e eq "na") && ($$e eq "na")) { 
-					next READ unless ((($$e ne "na") && ($eval < $$e)) || (($$s ne "na") && ($score > $$s)) || (($$i ne "na") && ($id > $$i)));
+				unless (($$e eq "na") && ($$s eq "na") && ($$i eq "na")) { 
+					next HIT unless ((($$e ne "na") && ($eval < $$e)) || (($$s ne "na") && ($score > $$s)) || (($$i ne "na") && ($id > $$i)));
 				}
 				
-				print $parsed_fh 
-					$Qname,"\t",
-					$result->query_length,"\t",	
-					$hit->name,"\t",				
-					$hit->description,"\t",
-					$hit->length,"\t",
-					$hit->significance,"\t",
-					$hit->raw_score,"\t",
-					$hit->bits,"\t",
-					$hit->num_hsps,"\t",
-					$hsp->evalue,"\t",
-					$hsp->percent_identity,"\t",
-					$hsp->length('total'),"\t",
-					$hsp->length('query'),"\t",
-					$hsp->start('query'),"\t",
-					$hsp->end('query'),"\t",
-					$hsp->strand('query'),"\t",
-					$hsp->length('hit'),"\t",
-					#If need to extract the hsp sequences
-					$hit->name,"\t",
-					$hsp->start('hit'),"\t",
-					$hsp->end('hit'),"\t",
-					$hsp->strand('hit'),"\t",				
-					"\n",	;
-			
-				if (($$top ne "na") && ($written < $$top)) {
-					print $tops_fh 
-						$Qname,"\t",
-						$result->query_length,"\t",	
-						$hit->name,"\t",				
-						$hit->description,"\t",
-						$hit->length,"\t",
-						$hit->significance,"\t",
-						$hit->raw_score,"\t",
-						$hit->bits,"\t",
-						$hit->num_hsps,"\t",
-						$hsp->evalue,"\t",
-						$hsp->percent_identity,"\t",
-						$hsp->length('total'),"\t",
-						$hsp->length('query'),"\t",
-						$hsp->start('query'),"\t",
-						$hsp->end('query'),"\t",
-						$hsp->strand('query'),"\t",
-						$hsp->length('hit'),"\t",
-						#If need to extract the hsp sequences
-						$hit->name,"\t",
-						$hsp->start('hit'),"\t",
-						$hsp->end('hit'),"\t",
-						$hsp->strand('hit'),"\t",				
-						"\n",	;
-					$written++;
-				}	
+				print $parsed_fh $toprint;
+				print $catpfh $toprint if ($$cat eq "y");;		
 			}
 		}
 	}	
 	close $parsed_fh;
 	close $tops_fh if ($$top ne "na");
+	close $catpfh if ($$cat eq "y");
+	close $cattfh if (($$cat eq "y") && ($$top ne "na"));
 	print STDERR "        ..done: parsing $blastout (thr ".threads->tid().")\n" if ($$v);
 	return ($check);
 }	
@@ -415,20 +404,5 @@ sub parse_blast_prep_out {
 	close $fh;
 	return;
 }
-
-#----------------------------------------------------------------------------
-# concatenate parsed blast outputs
-# cat_parsed($outpath."/parsed") if ($cat);
-# called by main
-#----------------------------------------------------------------------------
-sub cat_parsed {
-	my $dir = shift;
-	my $name = filename($dir);
-	my $cat = $dir."/_$name.all.tab";
-	parse_blast_prep_out($cat);
-	`cat $dir/* | sed 's/#.*//' | perl -p -e 's/^\n//' >> $cat`;
-	return;
-}
-
 
 

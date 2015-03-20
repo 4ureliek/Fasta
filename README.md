@@ -6,7 +6,7 @@ Perl scripts dealing with fasta files.
 ========================================================
 fasta_Cut_based-on-Mo.pl
 
-	perl <scriptname.pl> <FastaFile> <File size in Mo>
+	perl fasta_Cut_based-on-Mo.pl <FastaFile> <File size in Mo>
 	
 	This script will rewrite a fasta file (typically, a genome) in pieces of X Mo (~correlated to the total length of sequences)
 	
@@ -22,7 +22,7 @@ fasta_extract_random.pl [v1.1]
     WHAT IT DOES
 	This script will go through fasta file and randomly extract a total of X sequences
 
-	perl <scriptname.pl> -i <in.fa> [-n <X>] [-p <X>] [-d] [-c] [-m <X>] [-nom] [-v] [-h|help]
+	perl fasta_extract_random.pl -i <in.fa> [-n <X>] [-p <X>] [-d] [-c] [-m <X>] [-nom] [-v] [-h|help]
 	
     MANDATORY ARGUMENT:	
     -i <X>  => (STRING) fasta file to loop through. Need to be .fa or .fasta
@@ -44,6 +44,60 @@ fasta_extract_random.pl [v1.1]
 
 ========================================================
 
+fasta_FetchSeqs.pl [v1.0]
+
+	WHAT IT DOES
+	This script allows to extract fasta sequences from a file.
+	  - matching ID (from command line or from a file containing a list of IDs using -file)
+	  - containing a word in the ID or in the description (-desc), or in both (-both)
+	  - the complement of that (meaning, extract when it does not match), option -inv (inverse match)
+	
+	Note that for a given fasta header:
+	   >ID description
+	   The ID corresponds to anything before the first space, description is anything that's after (even if spaces)
+	
+	Usage:
+	perl fasta_FetchSeqs.pl -in <fa> -m <X> [-file] [-desc] [-both] [-regex] [-inv] [-noc] [-out <X>] [-chlog] [-v] [-h]
+	
+	Examples:
+	   To extract all sequences containing ERV or LTR in IDs only:
+		  perl fasta_FetchSeqs.pl -in fastafile.fa -m ERV,LTR -regex -v
+	   To extract all sequences that don't have the word \"virus\" in the description or in the ID
+		  perl fasta_FetchSeqs.pl -in fastafile.fa -m virus -both -inv -v
+	   To extract all sequences that have their ID listed in a file
+		  perl fasta_FetchSeqs.pl -in fastafile.fa -m list.txt -v
+	   To extract all sequences that have their full header listed in a file
+		  perl fasta_FetchSeqs.pl -in fastafile.fa -m list.txt -both -v
+		
+    MANDATORY:	
+    -in     => (STRING) input fasta file
+    -m      => (STRING) a word or a file (if it's a file, use -file as well)
+                        You can set several words using , (comma) as a separator
+                        There can't be spaces in the command line, or they have to be escaped with \
+	
+    OPTIONAL:
+    -file   => (BOOL)   chose this if -m corresponds to a fasta file or a file containing a list of words/IDs (one column)
+                        If it is a file with only headers:
+                          -> the > can be there or not (but if it is, it has to be there for ALL lines)
+                          -> each line can contain:
+                              - fasta IDs (no spaces)
+                              - descriptions if -desc is used (spaces allowed)
+                              - full fasta headers if -both is used
+    -desc   => (BOOL)   to look for match in the description and not the header
+    -both   => (BOOL)   to look into both headers and description   
+    -regex  => (BOOL)   to look for containing the word and not an exact match
+                        Special characters in names or descriptions will be an issue;
+                        the only ones that are taken care of are: | / . [ ] 
+    -inv    => (BOOL)   to extract what DOES NOT match
+    -noc    => (BOOL)   to ignore case in matching   
+    -out    => (STRING) to set the name of the output file (default = input.extract.fa)
+    -chlog  => (BOOL)   print updates
+    -v      => (BOOL)   verbose mode, make the script talk to you
+    -v      => (BOOL)   print version if only option
+    -h|help => (BOOL)   print this help\n\n";
+
+========================================================
+
 fasta_keep-unique.pl [v2.0]
 
 	WHAT IT DOES
@@ -62,7 +116,8 @@ fasta_keep-unique.pl [v2.0]
                          Typically: -i inputfile1,inputfile2,inputfileN
     
     OPTIONAL
-    -cat     => (BOOL)   To concatenate all unique sequences as well as all removed sequences (-> get 2 output files for the run)
+    -cat     => (BOOL)   To concatenate all unique sequences as well as all removed sequences 
+                         (-> get 2 output files for the run)
     -out     => (STRING) To rename the output names when -cat is chosen
                          default = name of the first file in -i is used
     -rm      => (BOOL)   To remove single files after they are concatenated
@@ -71,7 +126,7 @@ fasta_keep-unique.pl [v2.0]
     
 ========================================================
 
-fasta_split_blast_parse_P.pl [v1.0]
+fasta_split_blast_parse_P.pl [v1.1]
 
 	WHAT IT DOES
 	This script will blast a fasta file against the fasta file set with -db (set the blast type with -type)
@@ -81,7 +136,9 @@ fasta_split_blast_parse_P.pl [v1.0]
 	Additionally, like the tabular output of blasts, the top X hits can be extracted (independently of filtering)
 	
 	
-	perl <scriptname.pl> -in <in.fa> -db <db.fa> -type <blast_type> [-blast <path/bin>] [-dbtype <db_type>] [-eval <evalue>] [-parse] [-s <score>] [-e <evalue>] [-id <%id>] [-top <X>] [-cat] [-cpu <number>] [-v]
+	perl <fasta_split_blast_parse_P.pl> -in <in.fa> -db <db.fa> -type <blast_type> [-blast <path/bin>] 
+	                                   [-dbtype <db_type>] [-eval <evalue>] [-parse] [-s <score>] [-e <evalue>] 
+	                                   [-id <%id>] [-top <X>] [-cat] [-cpu <number>] [-v]
 
     MANDATORY ARGUMENT:	
     -in     => (STRING) input fasta file
