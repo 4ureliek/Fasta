@@ -17,13 +17,17 @@ my $version = "1.0";
 my $changelog = "
 #   - v1.0 = 19 Mar 2015
 #             Basically merging 6 different scripts in one... It was a mess
+#   - v2.0 = 17 Jul 2015
+#             Merging can be messy too! Introdction of bugs. The -inv option didn't work.
+#             Also, allow the -m IDfile to be a fasta file
+#             Usage update
 \n";
 
 my $usage = "\nUsage [$version]: 
     perl fasta_FetchSeqs.pl -in <fa> -m <X> [-file] [-desc] [-both] [-regex] [-inv] [-noc] [-out <X>] [-chlog] [-v] [-h]
 	
 	This script allows to extract fasta sequences from a file.
-	  - matching ID (from command line or from a file containing a list of IDs using -file)
+	  - matching ID (from command line or using another fasta file or a file containing a list of IDs using -file)
 	  - containing a word in the ID or in the description (-desc), or in both (-both)
 	  - the complement of that (meaning, extract when it does not match), option -inv (inverse match)
 	
@@ -43,18 +47,20 @@ my $usage = "\nUsage [$version]:
 		
     MANDATORY:	
     -in     => (STRING) input fasta file
-    -m      => (STRING) a word or a file (if it's a file, use -file as well)
-                        You can set several words using , (comma) as a separator
-                        There can't be spaces in the command line, or they have to be escaped with \
-	
+    -m      => (STRING) provide (i) a word or (ii) a path to a file
+                        (i) in command line: you can set several words using , (comma) as a separator.
+                            For example: -m ERV,LTR
+                            Note that there can't be spaces in the command line, or they have to be escaped with \
+                        (ii) a file: it can be a fasta file, or simply a file with a list of IDs (one column)
+                            If the \">\" is kept with the ID, then all lines need to have it (the lines without it will be ignored))
+                            Headers can contain:
+                             - fasta IDs only (no spaces) [defaults earch is done against IDs only]
+                             - full fasta headers (use -both to match both, otherwise only ID is looked at)
+                             - descriptions only (spaces allowed) if -desc is set
+                            Note that you need to use the -file flag
+
     OPTIONAL:
-    -file   => (BOOL)   chose this if -m corresponds to a fasta file or a file containing a list of words/IDs (one column)
-                        If it is a file with only headers:
-                          -> the > can be there or not (but if it is, it has to be there for ALL lines)
-                          -> each line can contain:
-                              - fasta IDs (no spaces)
-                              - descriptions if -desc is used (spaces allowed)
-                              - full fasta headers if -both is used
+    -file   => (BOOL)   chose this if -m corresponds to a file                      
     -desc   => (BOOL)   to look for match in the description and not the header
     -both   => (BOOL)   to look into both headers and description   
     -regex  => (BOOL)   to look for containing the word and not an exact match
@@ -81,13 +87,14 @@ die "\n version $version\n\n" if ((! $fa) && (! $m) && (! $help) && (! $chlog) &
 die $changelog if ($chlog);
 die $usage if (((! $fa) && (! $m)) || ($help));
 die "\nERROR: please provide input file (-in); type -h to see usage\n\n" if (! $fa);
+die "\nERROR: input file (-in) does not exist?\n\n" if (! -e $fa);
 die "\nERROR: please provide a word or a file (-m); type -h to see usage\n\n" if (! $m);
 
 if ($v) {
 	print STDERR "\n --- Script to fetch fasta sequences started (v$version)\n";
 	print STDERR "       - input fasta file = $fa\n";
 	print STDERR "       - extraction of sequences based on matching with\n";
-($ifF)?(print STDERR "         -> list of words in file $m\n"):(print STDERR "         -> the following word(s): $m\n");
+($ifF)?(print STDERR "         -> fasta headers in file $m\n"):(print STDERR "         -> the following word(s): $m\n");
 	print STDERR "       - will look for match in/of description\n" if ($desc);
 	print STDERR "       - will look for match in/of both ID and description\n" if ($both);
 	print STDERR "       - extraction will be based on exact match between header and the word(s) set with -m\n" if ($regex eq "na");
@@ -122,6 +129,7 @@ if ($outname) {
 } else {	
 	$out= $fa;
 	$out=~ s/\.fa$//;
+	$out=~ s/\.fas$//;
 	$out=~ s/\.fasta$//;
 	$out = $out.".extract.fa";
 }	
@@ -171,7 +179,6 @@ sub extract_seqs {
 		my $desc = $seq->desc;
 		$id = lc($id) if ($noc eq "y");
 		$desc = lc($desc) if ($noc eq "y");
-			
 		# Go over the list of words to see if sequence should be printed or not
 		for (my $i=0; $i <= $#list; $i++) {
 			chomp (my $w = $list[$i]);
@@ -185,35 +192,27 @@ sub extract_seqs {
 			my ($wi,$wd) = ($w,$w);
 			($wi,$wd) = ($1,$2) if ($w =~/^(\S+)?\s+(.*)$/); #Get id and desc if there is any space
 			$w = lc($w) if ($noc eq "y"); 
-
 			
-			#this is not very elegant but I could not make it work with lots of || and &&
+			#Now check
 			if ($regex eq "na") {
-				if ($inv eq "n") {
-					if ((($d eq "n") && ($both eq "n") && ($id eq $w)) || (($d eq "y") && ($desc eq $w)) || (($both eq "y") &&  ($id eq $wi) && ($desc eq $wd))) {
+				if ((($d eq "n") && ($both eq "n") && ($id eq $w)) || (($d eq "y") && ($desc eq $w)) || (($both eq "y") && ($id eq $wi) && ($desc eq $wd))) {
+					if ($inv eq "n") {
 						$outio->write_seq($seq); 
-						next SEQ;
-					}	
-				} elsif ($inv eq "y") {
-					if ((($d eq "n") && ($both eq "n") && ($id ne $w)) || (($d eq "y") && ($desc ne $w)) || (($both eq "y") && (($id ne $wi) || ($desc ne $wd)))) {
-						$outio->write_seq($seq); 
-						next SEQ;
-					}	
+					}
+					print STDERR "This seq had match => do not print\t$id\t$w\n";
+					next SEQ; #If inv ne n then inverted match wanted, and there was a match => skip that sequence
 				}	
 			} else {
-				if ($inv eq "n") {
-					if ((($d eq "n") && ($both eq "n") && ($id =~ /$w/)) || (($d eq "y") && ($desc =~ /$w/)) || (($both eq "y") && ($id =~ /$wi/) && ($desc =~ /$wd/))) {
+				if ((($d eq "n") && ($both eq "n") && ($id =~ /$w/)) || (($d eq "y") && ($desc =~ /$w/)) || (($both eq "y") && ($id =~ /$wi/) && ($desc =~ /$wd/))) {
+					if ($inv eq "n") { 
 						$outio->write_seq($seq); 
-						next SEQ;
 					}
-				} elsif ($inv eq "y") {
-					if ((($d eq "n") && ($both eq "n") && ($id !~ /$w/)) || (($d eq "y") && ($desc !~ /$w/)) || (($both eq "y") && ($id !~ /$wi/) && ($desc !~ /$wd/)))	{
-						$outio->write_seq($seq); 
-						next SEQ;
-					}	
+					next SEQ; #If inv ne n then inverted match wanted, and there was a match => skip that sequence
 				}
 			}
 		}
+		#Any sequence that goes through here, there was no match => the ones to print when inverted.
+		$outio->write_seq($seq) if ($inv eq "y"); 
 	}
 	return;
 }
