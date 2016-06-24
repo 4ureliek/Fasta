@@ -57,7 +57,16 @@ fasta_FetchSeqs.pl [v1.0]
 	   The ID corresponds to anything before the first space, description is anything that's after (even if spaces)
 	
 	Usage:
-	perl fasta_FetchSeqs.pl -in <fa> -m <X> [-file] [-desc] [-both] [-regex] [-inv] [-noc] [-out <X>] [-chlog] [-v] [-h]
+		perl FetchSeqs.pl -in <fa> -m <X> [-file] [-out <X>] [-fq] [-grep] [-desc] [-both] [-regex] [-inv] [-noc] [-chlog] [-v] [-h]
+	
+	This script allows to extract fasta sequences from a file.
+	  - matching ID (from command line or using another fasta file or a file containing a list of IDs using -file)
+	  - containing a word in the ID or in the description (-desc), or in both (-both)
+	  - the complement of that (meaning, extract when it does not match), option -inv (inverse match)
+	
+	Note that for a given fasta header:
+	   >ID description
+	   The ID corresponds to anything before the first space, description is anything that's after (even if spaces)
 	
 	Examples:
 	   To extract all sequences containing ERV or LTR in IDs only:
@@ -71,30 +80,40 @@ fasta_FetchSeqs.pl [v1.0]
 		
     MANDATORY:	
     -in     => (STRING) input fasta file
-    -m      => (STRING) a word or a file (if it's a file, use -file as well)
-                        You can set several words using , (comma) as a separator
-                        There can't be spaces in the command line, or they have to be escaped with \
-	
+    -m      => (STRING) provide (i) a word or a list of words, or (ii) a path to a file
+                        (i) in command line: you can set several words using , (comma) as a separator.
+                            For example: -m ERV,LTR
+                            Note that there can't be spaces in the command line, or they have to be escaped with \
+                        (ii) a file: it can be a fasta/fastq file, or simply a file with a list of IDs (one column)
+                            If the \">\" or @ is kept with the ID, then all lines need to have it (unless -grep)
+                            Headers can contain:
+                             - fasta/fastq IDs only (no spaces) [defaults earch is done against IDs only]
+                             - full fasta headers (use -both to match both, otherwise only ID is looked at)
+                             - descriptions only (spaces allowed) if -desc is set
+                            Note that you need to use the -file flag
+
     OPTIONAL:
-    -file   => (BOOL)   chose this if -m corresponds to a fasta file or a file containing a list of words/IDs (one column)
-                        If it is a file with only headers:
-                          -> the > can be there or not (but if it is, it has to be there for ALL lines)
-                          -> each line can contain:
-                              - fasta IDs (no spaces)
-                              - descriptions if -desc is used (spaces allowed)
-                              - full fasta headers if -both is used
+    -file   => (BOOL)   chose this if -m corresponds to a file                      
+    -out    => (STRING) to set the name of the output file (default = input.extract.fa) 
+    -fq     => (BOOL)   if input file is in fastq format; output will also be fastq
+    -grep   => (BOOL)   Chose this with -fq to use grep instead of using BioSeq
+    					But this is even slower on large files.
+						Only relevant if -fq is set as well, because the sequences
+						will be extracted using grep -A 3 for each word set with -m
+						(extracting line that matches + 3 lines after the match)
+                        Also, this makes irrelevant the use of these options:
+                        -desc, -both, -regex, -inv, -noc
     -desc   => (BOOL)   to look for match in the description and not the header
     -both   => (BOOL)   to look into both headers and description   
     -regex  => (BOOL)   to look for containing the word and not an exact match
                         Special characters in names or descriptions will be an issue;
                         the only ones that are taken care of are: | / . [ ] 
     -inv    => (BOOL)   to extract what DOES NOT match
-    -noc    => (BOOL)   to ignore case in matching   
-    -out    => (STRING) to set the name of the output file (default = input.extract.fa)
+    -noc    => (BOOL)   to ignore case in matching  
     -chlog  => (BOOL)   print updates
     -v      => (BOOL)   verbose mode, make the script talk to you
     -v      => (BOOL)   print version if only option
-    -h|help => (BOOL)   print this help\n\n";
+    -h|help => (BOOL)   print this help
 
 ========================================================
 
