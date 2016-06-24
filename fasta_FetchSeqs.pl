@@ -3,7 +3,7 @@
 #######################################################
 # Author  :  Aurelie Kapusta
 # email   :  4urelie.k@gmail.com
-# Pupose  :  To extract sequences from a fasta or fastq file with filters on headers (matching IDs, containing a word etc - see usage)
+# Pupose  :  To extract sequences from a fasta file with filters on headers (matching IDs, containing a word etc - see usage)
 #######################################################
 use strict;
 use warnings;
@@ -11,8 +11,7 @@ use Carp;
 use Getopt::Long;
 use Bio::SeqIO;
 
-my $version = "2.2";
-my $scriptname = "FetchSeqs.pl";
+my $version = "1.0";
 
 # UPDATES
 my $changelog = "
@@ -22,16 +21,10 @@ my $changelog = "
 #             Merging can be messy too! Introdction of bugs. The -inv option didn't work.
 #             Also, allow the -m IDfile to be a fasta file
 #             Usage update
-#   - v2.1 = 12 Apr 2016 
-#             fastq option
-#   - v2.1 = 13 Apr 2016 
-#             grep option; faster indead when very large fastq file, but still super slow
-
-# TO DO: a bio db and not a SeqIO
 \n";
 
 my $usage = "\nUsage [$version]: 
-    perl FetchSeqs.pl -in <fa> -m <X> [-file] [-out <X>] [-fq] [-grep] [-desc] [-both] [-regex] [-inv] [-noc] [-chlog] [-v] [-h]
+    perl fasta_FetchSeqs.pl -in <fa> -m <X> [-file] [-desc] [-both] [-regex] [-inv] [-noc] [-out <X>] [-chlog] [-v] [-h]
 	
 	This script allows to extract fasta sequences from a file.
 	  - matching ID (from command line or using another fasta file or a file containing a list of IDs using -file)
@@ -54,36 +47,28 @@ my $usage = "\nUsage [$version]:
 		
     MANDATORY:	
     -in     => (STRING) input fasta file
-    -m      => (STRING) provide (i) a word or a list of words, or (ii) a path to a file
+    -m      => (STRING) provide (i) a word or (ii) a path to a file
                         (i) in command line: you can set several words using , (comma) as a separator.
                             For example: -m ERV,LTR
                             Note that there can't be spaces in the command line, or they have to be escaped with \
-                        (ii) a file: it can be a fasta/fastq file, or simply a file with a list of IDs (one column)
-                            If the \">\" or @ is kept with the ID, then all lines need to have it (unless -grep)
+                        (ii) a file: it can be a fasta file, or simply a file with a list of IDs (one column)
+                            If the \">\" is kept with the ID, then all lines need to have it (the lines without it will be ignored))
                             Headers can contain:
-                             - fasta/fastq IDs only (no spaces) [defaults earch is done against IDs only]
+                             - fasta IDs only (no spaces) [defaults earch is done against IDs only]
                              - full fasta headers (use -both to match both, otherwise only ID is looked at)
                              - descriptions only (spaces allowed) if -desc is set
                             Note that you need to use the -file flag
 
     OPTIONAL:
     -file   => (BOOL)   chose this if -m corresponds to a file                      
-    -out    => (STRING) to set the name of the output file (default = input.extract.fa) 
-    -fq     => (BOOL)   if input file is in fastq format; output will also be fastq
-    -grep   => (BOOL)   Chose this with -fq to use grep instead of using BioSeq
-    					But this is even slower on large files.
-						Only relevant if -fq is set as well, because the sequences
-						will be extracted using grep -A 3 for each word set with -m
-						(extracting line that matches + 3 lines after the match)
-                        Also, this makes irrelevant the use of these options:
-                        -desc, -both, -regex, -inv, -noc
     -desc   => (BOOL)   to look for match in the description and not the header
     -both   => (BOOL)   to look into both headers and description   
     -regex  => (BOOL)   to look for containing the word and not an exact match
                         Special characters in names or descriptions will be an issue;
                         the only ones that are taken care of are: | / . [ ] 
     -inv    => (BOOL)   to extract what DOES NOT match
-    -noc    => (BOOL)   to ignore case in matching  
+    -noc    => (BOOL)   to ignore case in matching   
+    -out    => (STRING) to set the name of the output file (default = input.extract.fa)
     -chlog  => (BOOL)   print updates
     -v      => (BOOL)   verbose mode, make the script talk to you
     -v      => (BOOL)   print version if only option
@@ -94,49 +79,42 @@ my $usage = "\nUsage [$version]:
 # Get arguments/options
 ################################################################################
 my $regex = "na";
-my ($in,$m,$ifF,$desc,$both,$noc,$inv,$outname,$fq,$grep,$chlog,$help,$v);
-GetOptions ('in=s' => \$in, 'out=s' => \$outname, 'm=s' => \$m, 'file' => \$ifF, 'desc' => \$desc, 'both' => \$both, 'regex' => \$regex, 'inv' => \$inv, 'noc' => \$noc, 'fq' => \$fq, 'grep' => \$grep, 'chlog' => \$chlog, 'h' => \$help, 'help' => \$help, 'v' => \$v);
+my ($fa,$m,$ifF,$desc,$both,$noc,$inv,$outname,$chlog,$help,$v);
+GetOptions ('in=s' => \$fa, 'out=s' => \$outname, 'm=s' => \$m, 'file' => \$ifF, 'desc' => \$desc, 'both' => \$both, 'regex' => \$regex, 'inv' => \$inv, 'noc' => \$noc, 'chlog' => \$chlog, 'h' => \$help, 'help' => \$help, 'v' => \$v);
 
 #check step to see if mandatory arguments are provided + if help/changelog
-die "\n version $version\n\n" if ((! $in) && (! $m) && (! $help) && (! $chlog) && ($v));
+die "\n version $version\n\n" if ((! $fa) && (! $m) && (! $help) && (! $chlog) && ($v));
 die $changelog if ($chlog);
-die $usage if (((! $in) && (! $m)) || ($help));
-die "\nERROR: please provide input file (-in); type -h to see usage\n\n" if (! $in);
-die "\nERROR: -in $in does not exist?\n\n" if (! -e $in);
+die $usage if (((! $fa) && (! $m)) || ($help));
+die "\nERROR: please provide input file (-in); type -h to see usage\n\n" if (! $fa);
+die "\nERROR: input file (-in) does not exist?\n\n" if (! -e $fa);
 die "\nERROR: please provide a word or a file (-m); type -h to see usage\n\n" if (! $m);
-die "\nERROR: -m $m does not exist?\n\n" if (($ifF) && (! -e $m));
 
-($grep)?($grep="y"):($grep="n");
-$grep = "n" unless ($fq);
 if ($v) {
-	print STDERR "\n --- Script to fetch fasta sequences started (v$version), with\n";
-	print STDERR "       - input file = $in\n";
-	print STDERR "         is in fastq format\n" if ($fq);
-	print STDERR "       - extraction of sequences based on matching with ";
-($ifF)?(print STDERR "headers in file $m\n"):(print STDERR "the following word(s): $m\n");
-	print STDERR "       - will be done with grep, without the use of SeqIO\n" if ($grep eq "y");
-	print STDERR "       - will look for match in/of description\n" if (($desc) && ($grep eq "n"));
-	print STDERR "       - will look for match in/of both ID and description\n" if (($both) && ($grep eq "n"));
-	print STDERR "       - extraction will be based on exact match between header and the word(s) set with -m\n" if (($regex eq "na") && ($grep eq "n"));
-	print STDERR "       - extraction will be based on containing the word(s) set with -m\n" if (($regex ne "na") && ($grep eq "n"));
-	print STDERR "       - case won't matter\n" if (($noc) && ($grep eq "n"));
-	print STDERR "       - what DOES NOT match will be extracted\n" if (($inv) && ($grep eq "n"));
+	print STDERR "\n --- Script to fetch fasta sequences started (v$version)\n";
+	print STDERR "       - input fasta file = $fa\n";
+	print STDERR "       - extraction of sequences based on matching with\n";
+($ifF)?(print STDERR "         -> fasta headers in file $m\n"):(print STDERR "         -> the following word(s): $m\n");
+	print STDERR "       - will look for match in/of description\n" if ($desc);
+	print STDERR "       - will look for match in/of both ID and description\n" if ($both);
+	print STDERR "       - extraction will be based on exact match between header and the word(s) set with -m\n" if ($regex eq "na");
+	print STDERR "       - extraction will be based on containing the word(s) set with -m\n" if ($regex ne "na");
+	print STDERR "       - case won't matter\n" if ($noc);
+	print STDERR "       - what DOES NOT match will be extracted\n" if ($inv);
 }
 ($noc)?($noc="y"):($noc="n");
 ($inv)?($inv="y"):($inv="n");
 ($desc)?($desc="y"):($desc="n");
 ($both)?($both="y"):($both="n");
-($fq)?($fq="y"):($fq="n");
-($ifF)?($ifF="y"):($ifF="n");
 
 ################################################################################
 # MAIN
 ################################################################################
-#store words in a list unless it's a file and grep option => in that case, will loop
+#store words in a list
 my @w = ();
-if ($ifF eq "y") {
-	my $w = get_words($m,$fq) unless ($grep eq "y");
-	@w = @{$w} unless ($grep eq "y");
+if ($ifF) {
+	my $w = get_words($m);
+	@w = @{$w};
 } elsif ($m =~ /,/) {
 	@w = split(",",$m);
 } else {
@@ -144,20 +122,20 @@ if ($ifF eq "y") {
 }
 
 #Now extract sequences
-print STDERR " --- Extracting sequences...\n" if ($v);
+print STDERR "\n --- Extracting sequences...\n" if ($v);
 my $out;
 if ($outname) {
 	$out = $outname;
 } else {	
-	$out= $in;
-	$out=~ s/\.f[aq]$//;
+	$out= $fa;
+	$out=~ s/\.fa$//;
 	$out=~ s/\.fas$//;
-	$out=~ s/\.fast[aq]$//;
-	($fq eq "y")?($out = $out.".extract.fq"):($out = $out.".extract.fa");
+	$out=~ s/\.fasta$//;
+	$out = $out.".extract.fa";
 }	
-($grep eq "y")?(extract_fq_seqs_nobio($in,$out,$m,\@w,$ifF,$v)):(extract_seqs($in,$out,\@w,$desc,$both,$regex,$inv,$noc,$fq,$v));
+extract_seqs($fa,$out,\@w,$desc,$both,$regex,$inv,$noc,$v);
 
-print STDERR " --- Done, sequences extracted in $out\n\n" if ($v); 
+print STDERR "\n --- Done, sequences extracted in $out\n\n" if ($v); 
 exit;
 
 ##########################################################################################################
@@ -165,16 +143,15 @@ exit;
 ##########################################################################################################
 #----------------------------------------------------------------------------
 # get words from file (1 column)
-# $w = get_words($m,$fq);
+# $w = get_words($m,$noc);
 #----------------------------------------------------------------------------
 sub get_words {
-	my ($m,$fq) = @_;
+	my $m = shift;
 	my @w = ();		
-	# check if it's a fasta/q file, and if there are some > or @
-	my $ifH;
-	($fq eq "y")?(chomp($ifH = `head $m | grep -c -e '^\@'`)):(chomp($ifH = `head $m | grep -c -e '^>'`));
+	# check if it's a fasta file or if there are some >
+	chomp(my $ifH = `grep -c -e '^>' $m`);
 	if ($ifH > 0) {
-		($fq eq "y")?(@w = `grep -e '^\@' $m | sed 's/@//'`):(@w = `grep -e '^>' $m | sed 's/>//'`);
+		@w = `grep -e '^>' $m | sed 's/>//'`;
 	} else {		
 		open(my $fh, "<", $m) or confess "\nERROR (sub get_words): could not open to read $m $!\n";
 		while(<$fh>) {
@@ -188,15 +165,15 @@ sub get_words {
 
 #----------------------------------------------------------------------------
 # Extract sequences
-# extract_seqs($fa,$out,\@w,$desc,$both,$regex,$inv,$noc,$fq,$v);
+# extract_seqs($fa,$out,\@w,$desc,$both,$regex,$inv,$noc,$v);
 #----------------------------------------------------------------------------
 sub extract_seqs {
-	my ($in,$out,$list,$d,$both,$regex,$inv,$noc,$fq,$v) = @_;
+	my ($fa,$out,$list,$d,$both,$regex,$inv,$noc,$v) = @_;
 	my @list = @{$list};
-	my $format = "fasta";
-	$format = "fastq" if ($fq eq "y");
-	my $seqio = Bio::SeqIO->new(-file => $in, -format => $format) or confess "\nERROR (sub extract_seqs): Failed to read SeqIO object from $in $!\n";
-	my $outio = Bio::SeqIO->new(-file => ">$out", -format => $format) or confess "\nERROR (sub extract_seqs): Failed to write SeqIO object $out $!\n";
+	
+	my $seqio = Bio::SeqIO->new(-file => $fa, -format => "fasta") or confess "\nERROR (sub get_words): Failed to read SeqIO object from $fa $!\n";
+	my $outio = Bio::SeqIO->new(-file => ">$out", -format => "fasta") or confess "\nERROR (sub get_words): Failed to write SeqIO object $out $!\n";
+
 	SEQ: while( my $seq = $seqio->next_seq() ) {
 		my $id = $seq->display_id;
 		my $desc = $seq->desc;
@@ -222,7 +199,7 @@ sub extract_seqs {
 					if ($inv eq "n") {
 						$outio->write_seq($seq); 
 					}
-					#print STDERR "This seq had match => do not print\t$id\t$w\n";
+					print STDERR "This seq had match => do not print\t$id\t$w\n";
 					next SEQ; #If inv ne n then inverted match wanted, and there was a match => skip that sequence
 				}	
 			} else {
@@ -239,36 +216,5 @@ sub extract_seqs {
 	}
 	return;
 }
-
-#----------------------------------------------------------------------------
-# Extract sequences for fastq, without SeqIO
-# extract_fq_seqs_nobio($in,$out,$m,\@w,$ifF,$v)
-#----------------------------------------------------------------------------
-sub extract_fq_seqs_nobio {
-	my ($in,$out,$m,$list,$ifF,$v) = @_;
-	my @list = @{$list} if ($ifF eq "n");
-	open (my $fho, ">", $out) or confess "\nERROR (sub extract_fq_seqs_nobio): could not open to write $out $!\n";
-	if ($ifF eq "n") { #was not a file =loop on list
-		for (my $i=0; $i <= $#list; $i++) {
-			chomp (my $w = $list[$i]);
-			my $seq = `grep -A 3 "$w" $in`;
-			print $fho "$seq"; 			
-		}
-	} else {
-		open(my $fhi, "<", $m) or confess "\nERROR (sub extract_fq_seqs_nobio): could not open to read $m $!\n";
-		LINE: while (<$fhi>) {
-			chomp (my $line = $_);
-			my $seq = `grep -A 3 "$line" $in`;
-			print $fho "$seq";
-		}
-		close ($fhi)
-	}
-	close ($fho);
-	return;
-}
-
-
-
-
 
 
