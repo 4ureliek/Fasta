@@ -10,8 +10,6 @@ use warnings;
 use Carp;
 use Getopt::Long;
 use Bio::DB::Fasta;
-use Bio::Seq;
-use List::Util 'shuffle';
 
 my $version = "1.0";
 my $scriptname = "fasta_extract_random_pieces.pl";
