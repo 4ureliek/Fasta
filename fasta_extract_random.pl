@@ -10,6 +10,8 @@
 #   - v1.1 = 02 Mar 2015
 #            -> subroutines
 #			 -> add addition of mutation(s), in number of nt (not a rate)
+#   - v1.2 = 27 Sep 2016
+#            -> uppercases
 
 # TO DO
 #   - mutation rate
@@ -22,7 +24,7 @@ use Bio::DB::Fasta;
 use Bio::Seq;
 use List::Util 'shuffle';
 
-my $version = "1.0";
+my $version = "1.2";
 my $usage = "\nUsage [$version]: 
     perl <scriptname.pl> -i <in.fa> [-n <X>] [-p <X>] [-d] [-c] [-m <X>] [-nom] [-v] [-h|help]
 	
@@ -40,6 +42,7 @@ my $usage = "\nUsage [$version]:
     -d       => (BOOL)  Bio::DB::Fasta won't extract sequence if it looks like ZZZ:XX-XX 
                         (XX-XX are see as coordinates in ZZZ). Chose this option if you headers may look like that,
                         the : will be replaced by --
+    -u       => (BOOL)  write extracted sequences in uppercase
     -c       => (BOOL)  To also get the rest of the sequences in a file
     -m <X>   => (INT)   to mutate X nt in each sequence
     -nom     => (BOOL)  to ALSO get the same sequences extracted randomly, but without the mutations
@@ -49,8 +52,18 @@ my $usage = "\nUsage [$version]:
 ######################################################
 # Get arguments/options
 my ($getc,$m) = ("na","na");
-my ($file,$nb,$per,$nom,$dbhead,$help,$v);
-GetOptions ('i=s' => \$file, 'n=s' => \$nb, 'p=s' => \$per, 'm=s' => \$m, 'nom' => \$nom, 'd' => \$dbhead, 'c' => \$getc, 'h' => \$help, 'help' => \$help, 'v' => \$v);
+my ($file,$nb,$per,$nom,$dbhead,$uc,$help,$v);
+GetOptions ('i=s'  => \$file, 
+            'n=s'  => \$nb, 
+            'p=s'  => \$per, 
+            'm=s'  => \$m, 
+            'nom'  => \$nom, 
+            'd'    => \$dbhead, 
+            'u'    => \$uc,
+            'c'    => \$getc, 
+            'h'    => \$help, 
+            'help' => \$help, 
+            'v'    => \$v);
 ($nom)?($nom="y"):($nom="n");
 
 #check step to see if required arguments are provided + if help
@@ -63,6 +76,9 @@ print STDERR "       WARN: -nom chosen but -m not chosen => -nom will have no ef
 $nb = get_nb($file,$per,$v) unless ($nb);
 print STDERR "      -> $nb sequences will be extracted\n" if (($v) && ($nb));
 print STDERR "      -> $nb sequences will be extracted ($per %)\n" if (($v) && ($per));
+
+print STDERR " --- Sequences will be in uppercase in the output\n" if (($v) && ($uc));	
+($uc)?($uc="y"):($uc="n");
 
 # index the fasta file if necessary and connect to the fasta obj
 my $reindex;
@@ -78,7 +94,7 @@ if ($dbhead) {
 }
 
 #now extract random
-extract_random($file,$db,$nb,$m,$nom,$getc,$v);
+extract_random($file,$db,$nb,$m,$nom,$getc,$uc,$v);
 
 print STDERR " --- Script done\n" if ($v);
 print STDERR "\n";
@@ -107,9 +123,9 @@ sub get_nb {
 # extract_random($file,$db,$nb,$m,$nom,$getc,$v);
 #----------------------------------------------------------------------------
 sub extract_random {
-	my ($file,$db,$nb,$m,$nom,$getc,$v) = @_;
+	my ($file,$db,$nb,$m,$nom,$getc,$uc,$v) = @_;
 	my @ids = $db->ids();
-	
+		
 	# shuffle array
 	print STDERR "     Shuffle array of headers and extract a slice with $nb...\n" if ($v);
 	my @shuffled = shuffle(@ids);
@@ -118,6 +134,7 @@ sub extract_random {
 	# keep only a slice of the array => $nb values of this array
 	my @slice = @shuffled[ 0 .. $nb-1 ];
 	my $slicenb = @slice;
+		
 	# extract the subset of sequences
 	my $out = $1.".random.$nb" if (($file =~ /^(.*)\.fa/)); #should work even if named fasta
 	($m ne "na")?($out = $out.".mut.fa"):($out = $out.".fa");
@@ -137,8 +154,10 @@ sub extract_random {
 		if  (! $seq) {
 			print STDERR "     ERROR (sub extract_random): $id not found in $file\n";
 		} else {
+			$id =~ s/\.\.\./\//g; #re replace the ... to a /
 			print $outnmfh ">$id\n$seq\n" if (($m ne "na") && ($nom eq "y"));
 			$seq = mutate_seq($seq,$m) if ($m ne "na");
+			$seq = uc($seq) if ($uc);
 			print $outfh ">$id\n$seq\n";
 			$ids{$id}=1;
 			$i++;
@@ -172,6 +191,7 @@ sub extract_random {
 			} elsif (! $ids{$id}) {
 				print $outcnmfh ">$id\n$seq\n" if (($m ne "na") && ($nom eq "y"));
 				$seq = mutate_seq($seq,$m) if ($m ne "na");
+				$seq = uc($seq) if ($uc);
 				print $outcfh ">$id\n$seq\n";
 			}
 		}
@@ -213,14 +233,15 @@ sub mutate_seq {
 #----------------------------------------------------------------------------
 sub make_my_id {
 	my $line = shift;
-	$line =~ /^>(\S+)/; #original expression used, keep only the ID
-	#$line =~ /^>(.*)$/; #keep description.
+	#$line =~ /^>(\S+)/; #original expression used, keep only the ID
+	$line =~ s/\//.../g; #the / is a special char in Bio::DB => strand...
+	$line =~ /^>(.*)$/; #keep description => the whole line is the ID
 	return $1;
 }
 sub make_my_id_m {
 	my $line = shift;
 	$line =~ s/:/--/g; #replace any : by --
-	$line =~ /^>(\S+)/; #original expression used, keep only the ID
-	#$line =~ /^>(.*)$/; #keep description
+	#$line =~ /^>(\S+)/; #original expression used, keep only the ID
+	$line =~ /^>(.*)$/; #keep description
 	return $1;
 }
