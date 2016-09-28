@@ -18,18 +18,19 @@ fasta_Cut_based-on-Mo.pl
 
 ========================================================
 fasta_extract_random.pl [v1.2] 
-fasta_extract_random_pieces.pl [v1.0]
+fasta_extract_random_pieces.pl [v1.1]
 
     PURPOSE:
     These scripts will extract random sequences (fasta_extract_random.pl), 
     or random sub sequences (fasta_extract_random_pieces.pl)
     
 	perl fasta_extract_random.pl -i <in.fa> [-n <X>] [-p <X>] [-d] [-u] [-c] [-m <X>] [-nom] [-v] [-h|help]
-	perl fasta_extract_random_pieces.pl -i <in.fa> -l <min,max> [-n <X>] [-p <X>] [-o <out.fa] [-u] [-s] [-b] [-v] [-h|help]
+	perl fasta_extract_random_pieces.pl -i <in.fa> -l <min,max> [-n <X>] [-p <X>] [-o <out.fa] [-a <X>] [-u] [-s] [-b] [-v] [-h|help]
     
     Check their usage (use -h) to see the details of the options. Briefly:
     -n or -p to set the number of sequences to extract
     -u to write sequence in upper cases
+    -a to decide allowed overlap (0% to 100%)
 
 ========================================================
 
