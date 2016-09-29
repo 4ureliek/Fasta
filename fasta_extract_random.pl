@@ -11,7 +11,9 @@
 #            -> subroutines
 #			 -> add addition of mutation(s), in number of nt (not a rate)
 #   - v1.2 = 27 Sep 2016
-#            -> uppercases
+#            -> uppercases + keep description
+#   - v1.3 = 28 Sep 2016
+#            -> fix bug for -c, introduced in v1.1
 
 # TO DO
 #   - mutation rate
@@ -124,8 +126,8 @@ sub get_nb {
 #----------------------------------------------------------------------------
 sub extract_random {
 	my ($file,$db,$nb,$m,$nom,$getc,$uc,$v) = @_;
-	my @ids = $db->ids();
-		
+	my @ids = $db->ids(); #kept description in ID
+
 	# shuffle array
 	print STDERR "     Shuffle array of headers and extract a slice with $nb...\n" if ($v);
 	my @shuffled = shuffle(@ids);
@@ -133,24 +135,25 @@ sub extract_random {
 	
 	# keep only a slice of the array => $nb values of this array
 	my @slice = @shuffled[ 0 .. $nb-1 ];
-	my $slicenb = @slice;
-		
+	my $slicenb = @slice;			
 	# extract the subset of sequences
-	my $out = $1.".random.$nb" if (($file =~ /^(.*)\.fa/)); #should work even if named fasta
+	my $out = $1.".".$nb."_rand" if (($file =~ /^(.*)\.f[na]+/));
 	($m ne "na")?($out = $out.".mut.fa"):($out = $out.".fa");
+	print STDERR "     sequences will be in $out\n" if ($v);
+
 	open (my $outfh, ">","$out") or confess "     ERROR (sub extract_random): Failed to open to write file $out $!\n";	
 	
 	#same set no mutation if relevant
 	my ($outnm,$outnmfh);
 	if (($m ne "na") && ($nom eq "y")) {	
-		$outnm = $1.".random.$nb.fa" if ($file =~ /^(.*)\.fa/);
+		my $outnm = $1.".".$nb."_rand.fa" if ($file =~ /^(.*)\.fa/);
 		print STDERR "     -nom chosen, so the same set of sequences will be extracted, without mutation ($outnm)\n" if ($v);
 		open ($outnmfh, ">","$outnm") or confess "     ERROR (sub extract_random): Failed to open to write file $outnm $!\n";		
 	}	
 	my %ids = ();
 	my $i = 0;
 	RAND: foreach my $id (@slice) {
-		my $seq = $db->seq($id);
+		my $seq = $db->seq($id);		
 		if  (! $seq) {
 			print STDERR "     ERROR (sub extract_random): $id not found in $file\n";
 		} else {
@@ -159,7 +162,7 @@ sub extract_random {
 			$seq = mutate_seq($seq,$m) if ($m ne "na");
 			$seq = uc($seq) if ($uc);
 			print $outfh ">$id\n$seq\n";
-			$ids{$id}=1;
+			$ids{$id}=1;	
 			$i++;
 		}
 		last RAND if ($i == $nb); #exit extraction loop if enough sequences
@@ -186,6 +189,7 @@ sub extract_random {
 		
 		foreach my $id (@ids) {
 			my $seq = $db->seq($id);
+			$id =~ s/\.\.\./\//g; #re replace the ... to a /
 			if  (! $seq) {
 				print "\n     ERROR (sub extract_random): $id not found in $file\n" 
 			} elsif (! $ids{$id}) {
@@ -235,7 +239,10 @@ sub make_my_id {
 	my $line = shift;
 	#$line =~ /^>(\S+)/; #original expression used, keep only the ID
 	$line =~ s/\//.../g; #the / is a special char in Bio::DB => strand...
-	$line =~ /^>(.*)$/; #keep description => the whole line is the ID
+	$line =~ /^>(.*)$/; #keep description => the whole line is the ID	
+	
+	print STDERR "ID = $1\n";
+	
 	return $1;
 }
 sub make_my_id_m {
