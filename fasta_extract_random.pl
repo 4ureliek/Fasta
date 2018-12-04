@@ -14,6 +14,8 @@
 #            -> uppercases + keep description
 #   - v1.3 = 28 Sep 2016
 #            -> fix bug for -c, introduced in v1.1
+#   - v1.4 = 11 Oct 2016
+#            -> option -f to check for Ns
 
 # TO DO
 #   - mutation rate
@@ -26,9 +28,9 @@ use Bio::DB::Fasta;
 use Bio::Seq;
 use List::Util 'shuffle';
 
-my $version = "1.2";
+my $version = "1.4";
 my $usage = "\nUsage [$version]: 
-    perl <scriptname.pl> -i <in.fa> [-n <X>] [-p <X>] [-d] [-c] [-m <X>] [-nom] [-v] [-h|help]
+    perl <scriptname.pl> -i <in.fa> [-n <X>] [-p <X>] [-d] [-c] [-f X] [-m <X>] [-nom] [-v] [-h|help]
 	
     This script will go through fasta file and randomly extract a total of X sequences
 		
@@ -46,6 +48,9 @@ my $usage = "\nUsage [$version]:
                         the : will be replaced by --
     -u       => (BOOL)  write extracted sequences in uppercase
     -c       => (BOOL)  To also get the rest of the sequences in a file
+    -f       => (FLOAT) To check for Ns in the sequences (when nt) and skip extraction 
+                        if more than X% of the sequence is made of Ns [default: no check]
+                        Note that these sequences won't be in the complementary set either.
     -m <X>   => (INT)   to mutate X nt in each sequence
     -nom     => (BOOL)  to ALSO get the same sequences extracted randomly, but without the mutations
     -v       => (BOOL)  verbose mode, make the script talks to you / version if only option
@@ -54,6 +59,7 @@ my $usage = "\nUsage [$version]:
 ######################################################
 # Get arguments/options
 my ($getc,$m) = ("na","na");
+my $checkN = "n";
 my ($file,$nb,$per,$nom,$dbhead,$uc,$help,$v);
 GetOptions ('i=s'  => \$file, 
             'n=s'  => \$nb, 
@@ -62,6 +68,7 @@ GetOptions ('i=s'  => \$file,
             'nom'  => \$nom, 
             'd'    => \$dbhead, 
             'u'    => \$uc,
+            'f=s'  => \$checkN,
             'c'    => \$getc, 
             'h'    => \$help, 
             'help' => \$help, 
@@ -81,6 +88,7 @@ print STDERR "      -> $nb sequences will be extracted ($per %)\n" if (($v) && (
 
 print STDERR " --- Sequences will be in uppercase in the output\n" if (($v) && ($uc));	
 ($uc)?($uc="y"):($uc="n");
+print STDERR " --- Sequences will be skipped if composed of more than $checkN % of Ns\n" if (($v) && ($checkN ne "n"));	
 
 # index the fasta file if necessary and connect to the fasta obj
 my $reindex;
@@ -96,7 +104,7 @@ if ($dbhead) {
 }
 
 #now extract random
-extract_random($file,$db,$nb,$m,$nom,$getc,$uc,$v);
+extract_random($file,$db,$nb,$m,$nom,$getc,$uc,$checkN,$v);
 
 print STDERR " --- Script done\n" if ($v);
 print STDERR "\n";
@@ -122,12 +130,13 @@ sub get_nb {
 
 #----------------------------------------------------------------------------
 # Extract random set of sequences using a Bio::DB::Fasta object
-# extract_random($file,$db,$nb,$m,$nom,$getc,$v);
+# extract_random($file,$db,$nb,$m,$nom,$getc,$uc,$checkN,$v);
 #----------------------------------------------------------------------------
 sub extract_random {
-	my ($file,$db,$nb,$m,$nom,$getc,$uc,$v) = @_;
+	my ($file,$db,$nb,$m,$nom,$getc,$uc,$checkN,$v) = @_;
 	my @ids = $db->ids(); #kept description in ID
-
+	my $skipped_Ns = 0;
+	
 	# shuffle array
 	print STDERR "     Shuffle array of headers and extract a slice with $nb...\n" if ($v);
 	my @shuffled = shuffle(@ids);
@@ -158,11 +167,16 @@ sub extract_random {
 			print STDERR "     ERROR (sub extract_random): $id not found in $file\n";
 		} else {
 			$id =~ s/\.\.\./\//g; #re replace the ... to a /
+			$ids{$id}=1;
+			if ($checkN ne "n") {
+				my $skip = 0;
+				($skipped_Ns,$skip) = get_N_per($seq,$skipped_Ns,$checkN);
+				next RAND if ($skip == 1); #kick out sequences that are >X% Ns; they also won't be printed in the compl dataset
+			}
 			print $outnmfh ">$id\n$seq\n" if (($m ne "na") && ($nom eq "y"));
 			$seq = mutate_seq($seq,$m) if ($m ne "na");
 			$seq = uc($seq) if ($uc);
 			print $outfh ">$id\n$seq\n";
-			$ids{$id}=1;	
 			$i++;
 		}
 		last RAND if ($i == $nb); #exit extraction loop if enough sequences
@@ -187,12 +201,17 @@ sub extract_random {
 			open ($outnmfh, ">","$outnm") or confess "     ERROR (sub extract_random): Failed to open to write file $outnm $!\n";
 		}	
 		
-		foreach my $id (@ids) {
+		COMPL: foreach my $id (@ids) {
 			my $seq = $db->seq($id);
 			$id =~ s/\.\.\./\//g; #re replace the ... to a /
 			if  (! $seq) {
-				print "\n     ERROR (sub extract_random): $id not found in $file\n" 
-			} elsif (! $ids{$id}) {
+				print STDERR "\n     ERROR (sub extract_random): $id not found in $file\n" 
+			} elsif (! $ids{$id}) { #all the ones skipped for Ns previously are not tested again
+				if ($checkN ne "n") {
+					my $skip = 0;
+					($skipped_Ns,$skip) = get_N_per($seq,$skipped_Ns,$checkN);
+					next COMPL if ($skip == 1); #kick out sequences that are >X% Ns; they also won't be printed in the compl dataset
+				}
 				print $outcnmfh ">$id\n$seq\n" if (($m ne "na") && ($nom eq "y"));
 				$seq = mutate_seq($seq,$m) if ($m ne "na");
 				$seq = uc($seq) if ($uc);
@@ -202,7 +221,24 @@ sub extract_random {
 		close $outcfh;
 		close $outcnmfh if (($m ne "na") && ($nom eq "y"));
 	}
+	print STDERR  "      -> a total of $skipped_Ns sequences were skipped and are not in the _rand or _compl files (were more than $checkN % Ns)\n";
 	return;
+}
+
+#----------------------------------------------------------------------------
+# Return the % of Ns 
+# get_N_per($seq)
+#----------------------------------------------------------------------------
+sub get_N_per {
+	my ($seq,$skipped_Ns,$checkN) = @_;
+	my $skip = 0;
+	my $len = length($seq);
+	$seq =~ s/[nN]//g;
+	my $noNs = length($seq);
+	my $nper = ($len-$noNs)/$len*100;
+	$skipped_Ns++ if ($nper > $checkN);
+	$skip=1 if ($nper > $checkN);
+	return ($skipped_Ns,$skip);
 }
 
 #----------------------------------------------------------------------------
@@ -239,10 +275,7 @@ sub make_my_id {
 	my $line = shift;
 	#$line =~ /^>(\S+)/; #original expression used, keep only the ID
 	$line =~ s/\//.../g; #the / is a special char in Bio::DB => strand...
-	$line =~ /^>(.*)$/; #keep description => the whole line is the ID	
-	
-	print STDERR "ID = $1\n";
-	
+	$line =~ /^>(.*)$/; #keep description => the whole line is the ID		
 	return $1;
 }
 sub make_my_id_m {

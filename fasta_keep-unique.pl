@@ -1,165 +1,280 @@
 #!/usr/bin/perl -w
 #######################################################
 # Author  :  Aurelie Kapusta
-# version :  see below
 # email   :  4urelie.k@gmail.com
-# Pupose  :  Get rid of identical sequences between X files
 #######################################################
-# UPDATES
-#	- v1.0 = 25 Apr 2011    
-#   - v2.0 = 09 Mar 2015
-#            -> subroutines
-#            -> remove concat of input files, no need
-#            -> possibility of printing back input files without non unique sequences + a file with sequences that were not unique
-
-# TO DO: include a check on names and modify them if needed
-######################################################
 use strict;
 use warnings;
 use Carp;
 use Getopt::Long;
 use Bio::Seq;
 use Bio::SeqIO;
+use Data::Dumper;
 
-my $version = "2.0";
-my $usage = "\nUsage [$version]: 
-    perl <scriptname.pl> -i <in.fa> [-all] [-v] [-h|help]
+my $SCRIPTNAME = "fasta_keep-unique.pl";
+my $VERSION = "3.0";
+my $CHANGELOG = "
+#	- v1.0 = 25 Apr 2011    
+#   - v2.0 = 09 Mar 2015
+#            - subroutines
+#            - remove concat of input files, no need
+#            - possibility of printing back input files without non unique sequences 
+#               + a file with sequences that were not unique
+#   - v3.0 = 20 Nov 2018
+#            Big update because merging stuff with various descriptions
+#            - uc convention
+#            - load all and then check names:
+#                 if hypotheticals or putative, chose other if any
+#                 if several names possible, use the majority one
+#                 if no majority, use a random one... 
+\n";
+my $USAGE = "\nUsage [$VERSION]: 
+    perl $SCRIPTNAME -i <in.fa> [-o] [-d] [-l] [-v] [-h]
 	
-    This script will filter out non unique sequences (based on sequences, not names)
-    The first occurence of a sequence will be kept, so order of input files will matter
+	This script will filter out non unique sequences (based on sequences, not names).
+    This v3 now takes descriptions into account, instead of just keeping the 
+    first occurence of a sequence:
+       - if hypotheticals, putative or uncharacterixed, chose other if any
+       - if several descriptions possible, use the majority one
+       - if no majority, use the first one [so if no description, the order of the sequences will matter]
     There will be 2 output files per input file: 
       - sequences that are unique when all files are considered
       - removed sequences
-    Use -cat to get concatenated files
+    As well as a tabulated file with the details of removed and kept sequences.  
     
-	Detailed usage:	
     MANDATORY	
-    -i <X>   => (STRING) fasta file. If several, separate with ,
-                         Typically: -i inputfile1,inputfile2,inputfileN
+    -i,--in   (STRING)  Fasta file. Can be several files separated by \",\"
+                        Typically: -i myseqs.fa,checkseqs.fa
     
     OPTIONAL
-    -cat     => (BOOL)   To concatenate all unique sequences as well as all removed sequences (-> get 2 output files for the run)
-    -out     => (STRING) To rename the output names when -cat is chosen
-                         default = name of the first file in -i is used
-    -rm      => (BOOL)   To remove single files after they are concatenated
-    -v       => (BOOL)   verbose mode, make the script talks to you / version if only option
-    -h|help  => (BOOL)   this usage\n\n";
+    -o,--out  (STRING)  To rename the output names
+                        Default: name of the first file in -i is used
+    -d,--dir    (BOOL)  Give a directory to -i
+                        Only .fa, .fasta, .faa, .fas, .fna files in it will be loaded
+                        Will ignore *unique* and *removed* files
+    -l,--log    (BOOL)  Print the change log (updates)
+    -v          (BOOL)  Verbose mode, make the script talks to you
+    -v          (BOOL)  Print version if only option
+    -h,--help   (BOOL)  Print this usage
+\n";
 
 ######################################################
 # Get arguments/options
-my ($in,$cat,$out,$rem,$help,$v);
-GetOptions ('i=s' => \$in, 'cat' => \$cat, 'out=s' => \$out, 'rm' => \$rem, 'h' => \$help, 'help' => \$help, 'v' => \$v);
+my ($IN,$OUT,$DIR,$HELP,$CHLOG,$V);
+GetOptions ('i=s'   => \$IN, 
+            'o=s'   => \$OUT, 
+            'd'     => \$DIR,
+            'l'     => \$CHLOG,
+            'h'     => \$HELP, 
+            'v'     => \$V);
 
 #check step to see if required arguments are provided + if help
-die "\n This is fasta_keep_unique.pl version $version\n\n" if ((! $in) && (! $help) && ($v));
-die $usage if ((! $in) || ($help));
-
-print STDERR "\n --- Script to find redundant sequences started (v$version)\n" if ($v);	
-
-($rem)?($rem = "y"):($rem = "n");
+die "\n This is fasta_keep_unique.pl version $VERSION\n\n" if (! $IN && ! $HELP && $V);
+die $USAGE if (! $IN || $HELP);
+die $CHLOG if (! $IN || $CHLOG);
+print STDERR "\n --- Script $SCRIPTNAME to remove identical sequences started (v$VERSION)\n" if $V;	
+print STDERR "     Will load fasta files from $IN\n" if $DIR && $V;	
+$IN =~ s/\/$// if ($DIR);
 
 #get list of files
-my @files = ();
-if ($in =~ /,/) {
-	@files = split(",",$in);
-} else {
-	push(@files,$in);
-}
-$out = $files[0] unless ($out);
+my @FILES = ();
+get_files();
 
 # Remove identical sequences now (based on sequence)
-print STDERR "\n --- Removing sequences with identical sequences...\n" if ($v);	
-my $unique = keep_uniq(\@files,$out,$v);
-
-# cat if relevant
-if (($cat) && ($in =~ /,/)) {
-	print STDERR "     -cat chosen => concatenate outputs\n" if ($v);
-	print STDERR "     -rm chosen => individual outputs will be deleted\n" if ($v);
-	cat_out($out,$rem,$v);
+print STDERR "\n --- Loading fasta files:\n" if $V;	
+my %FA = ();
+my %CNT = ();
+my %DATA = ();
+foreach my $f (@FILES) {
+	next if ($f =~ /unique/);
+	next if ($f =~ /removed/);
+	$f = $IN."/".$f if ($DIR);
+	load_fa($f);
 }
-	
-print STDERR " --- Done\n\n" if ($v);
+
+print STDERR "\n --- Chosing sequences and printing output files:\n" if $V;	
+my %UNIQ = ();
+my %ALREADY = ();
+my $KEEP = $OUT.".unique.fa";
+my $REM = $OUT.".removed.fa";
+my $DBL = $OUT.".removed-headers-details.tab";
+keep_uniq();
+
+print STDERR "     - unique sequences in $KEEP\n" if $V;
+print STDERR "     - removed sequences in $REM\n" if $V;
+print STDERR "     - details of removed sequences in $DBL\n" if $V;
+print STDERR " --- Done\n\n" if $V;
 exit;
-##########################################################################################################
+
+#-------------------------------------------------------------------------------
 # SUBROUTINES
-##########################################################################################################
-#----------------------------------------------------------------------------
-# Remove identical sequences
-# my $unique = keep_uniq($out,$cat,$all,$idhash,$v);
-#----------------------------------------------------------------------------
-sub keep_uniq {
-	my ($files,$out,$v) = @_;
-	
-	# To keep track of what has been removed
-	my $doubles = $out.".doubleheader.txt";
-	open my $dfh, ">$doubles" or confess "ERROR (sub keep_uniq) Failed to open to write $doubles $!\n";
-	print $dfh "#file_from_where_seq_was_removed\tID_of_the_removed_sequence\tID_of_the_sequence_that_has_been_kept\tFile_where_seq_kept_is_from\n"; #use ; as separator in excel
-	
-	my %already = (); #when sequences have been printed already
-	foreach my $f (@{$files}) {
-		print STDERR "     -> dealing with $f\n" if ($v);
-		my $keptfa = $f.".uniq.fa";
-		my $remfa = $f.".removed.fa";
-		my $kept = 0;
-		my $rem = 0;
-		#create the SeqIO objects
-		my $io_in = Bio::SeqIO->new(-file => $f, -format => "fasta") or confess "ERROR (sub keep_uniq) Failed to create SeqIO object from $f $!\n";
-		my $io_uniq = Bio::SeqIO->new(-file => "> $keptfa", -format => "fasta") or confess "ERROR (sub keep_uniq) Failed to create output SeqIO $keptfa $!\n";
-		my $io_same = Bio::SeqIO->new(-file => "> $remfa", -format => "fasta") or confess "ERROR (sub keep_uniq) Failed to create output SeqIO $remfa $!\n";
-		#now loop through input file
-		while( my $seqs = $io_in->next_seq() ) {
-			my $id;
-			(defined $seqs->desc)?($id  = $seqs->display_id."\t".$seqs->desc):($id  = $seqs->display_id); #keep description
-			my $seq = $seqs->seq;
-			if ($already{$seq}) { #sequences with the same sequences was already printed
-				$io_same->write_seq($seqs); #print the seqs that are being removed
-				print $dfh "$f\t$id\t$already{$seq}\n";
-				$rem++;
-			} else {
-				$io_uniq->write_seq($seqs); #print the seqs unique so far
-				$already{$seq} = "$id\t$f"; #save info + that this seq was printed
-				$kept++;
-			}
+#-------------------------------------------------------------------------------
+sub get_files {
+	if ($DIR) {
+		opendir (my $dir, $IN) or confess "     \nERROR (get_files): could not open to read the directory $IN $!\n";
+		@FILES = grep { /\.(fa|fasta|faa|fna|fas)$/ && -f "$IN/$_" } readdir($dir);
+		@FILES = sort { $a cmp $b } @FILES;
+		closedir $dir;
+		$OUT = $IN unless ($OUT);
+	} else {
+		if ($IN =~ /,/) {
+			@FILES = split(",",$IN);
+		} else {
+			push(@FILES,$IN);
 		}
-		print STDERR "        $kept sequences kept because unique so far (printed in $keptfa)\n" if ($v);
-		print STDERR "        $rem sequences removed because have been kept already (printed in $remfa)\n" if ($v);
+		unless ($OUT) {
+			$OUT = $FILES[0];
+			$OUT =~ s/\.(fa|fasta|faa|fna|fas)$//;
+		}
 	}
-	print " --- Headers of sequences kept and removed are written in $doubles\n";
-	close ($dfh);
-	return;
+	return 1;
+}
+
+#-------------------------------------------------------------------------------
+sub load_fa {		
+	my $f = shift;
+	print STDERR "     -> $f\n" if $V;
+	if (! -e $f) {
+		print STDERR "        ERROR: $f does not exist?\n";
+		return 1;
+	}
+	my $in = Bio::SeqIO->new(-file => $f, -format => "fasta") or confess "ERROR (sub keep_uniq) Failed to create SeqIO object from $f $!\n";
+	while( my $seqs = $in->next_seq() ) {
+		my $id = $seqs->display_id;
+		my $seq = $seqs->seq;
+		my $d;
+		if (defined $seqs->desc) {
+			$d = $seqs->desc;
+			$d =~ s/Putative/putative/;
+			$d =~ s/Hypothetical/hypothetical/;
+			$d =~ s/Conserved/conserved/;
+			$d =~ s/Uncharacterised/Uncharacterized/; #will be hypothetical
+			$d =~ s/Uncharacterized/uncharacterized/;
+		} else { 
+			$d = "NA";
+		}
+		
+		#save with sequence & desc as keys; but remember if any non hypothetical
+		#if same description then it won't matter, just take the same 
+		if ($d !~ /hypothetical/ && $d !~ /uncharacterized/) {
+			if ($d !~ /putative/) {
+				$CNT{$seq}{'a'}{'t'}++;
+				$CNT{$seq}{'a'}{$d}++;
+			} else {
+				$CNT{$seq}{'p'}{'t'}++;
+				$CNT{$seq}{'p'}{$d}++;
+			}
+		} else {
+			$CNT{$seq}{'h'}{'t'}++;	
+			$CNT{$seq}{'h'}{$d}++;
+		}
+		$CNT{$seq}{'t'}{'t'}++;
+		$CNT{$seq}{'t'}{$d}++;
+		
+		#Save the corresponding keys for file names
+		my $k = $id."\t".$d."\t".$f;
+		if ($DATA{$seq}{$d}) {
+			push(@{$DATA{$seq}{$d}},$k);
+		} else {
+			$DATA{$seq}{$d}->[0] = $k;
+		}
+	}
+	return 1;
 }		
 
-#----------------------------------------------------------------------------
-# Cat outputs and delete previous if relevant
-# cat_out($out,$rem,$v)
-#----------------------------------------------------------------------------
-sub cat_out {
-	my ($out,$rem,$v) = @_;
-
-	my $dir = get_path($out);
+#-------------------------------------------------------------------------------
+sub keep_uniq {	
+	open (my $fhd, ">", $DBL) or confess "ERROR (sub keep_uniq) Failed to open to write $DBL $!\n";
+	print $fhd "#SEQ\ttot_seen\tFile_kept_seq\tID_kept_seq\tdesc_kept_seq\tFile_removed_seq\tID_removed_seq\tdesc_removed_seq\n";
 	
-	my $outuniq = $out.".cat.uniq.fa";
-	my @uniqfa = `ls $dir/*.uniq.fa"` or confess "\n      ERROR (sub rm_intermediates): can't list files .uniq.fa in $dir $!\n";
-	foreach my $u (@uniqfa) {
-		`cat @uniqfa > $outuniq`;
-		`rm -Rf $u` if ($rem eq "y");
-	}
+	open (my $fhk, ">", $KEEP) or confess "ERROR (sub keep_uniq) Failed to open to write $KEEP $!\n";
+	open (my $fhr, ">", $REM) or confess "ERROR (sub keep_uniq) Failed to open to write $REM $!\n";
 	
-	my $outsame = $out.".cat.removed.fa";
-	my @removefa = `ls $dir/*.removed.fa"` or confess "\n      ERROR (sub rm_intermediates): can't list files .removed.fa in $dir $!\n";
-	foreach my $r (@removefa) {
-		`cat @removefa > $outsame`;
-		`rm -Rf $r` if ($rem eq "y");
+	#loop through sequences; check if more than one description
+	#if yes, then sort by counts
+	SEQ: foreach my $s (keys %DATA) {
+#		print STDERR "\n-> seq = $s\n" if $V;
+		my $tot = $CNT{$s}{'t'}{'t'};
+#		print STDERR "   -> was seen $tot times\n" if $V;
+		
+		#all the descriptions
+		my @desc = ();
+		foreach my $d (keys %{$DATA{$s}}) {
+			push(@desc,$d);	
+		}
+		my $totd = scalar(@desc);
+				
+		#Now decide on the description
+		my $d;
+		if ($totd == 1) {
+#			print STDERR "      only one desc => KEEP\n" if $V;
+			$d = $desc[0];
+		} else {
+#			print STDERR "   -> More than one description, make choice\n" if $V;
+			 $d = make_choice($s,\@desc);
+		} 
+# 		print STDERR "   DESC CHOSEN = $d\n";
+ 		
+ 		#just take the first occurence once description is chosen, and print the rest
+ 		my ($id,$kd,$f) = split(/\t/,$DATA{$s}{$d}->[0]);
+ 		#print that one in the keep file and all the others in the removed file
+		print $fhk ">$id\t$d\n$s\n";	
+		
+		#Now print the rest in removed file - unless one desc one ID
+		next if ($tot == 1);
+		foreach my $od (keys ($DATA{$s})) {
+			my @seen = @{$DATA{$s}{$od}};
+			for (my $i=0; $i < scalar(@seen); $i++) {
+				my ($rid,$rd,$rf) = split(/\t/,$seen[$i]);
+				next if ($rid eq $id && $rf eq $f); #skip that kept one
+				print $fhd "$s\t$tot\t$f\t$id\t$d\t$rf\t$rid\t$rd\n"; 
+				print $fhr ">$rid\t$rd\n$s\n";
+			}	
+		}
 	}
-	return;	
+	close ($fhd);
+	close ($fhk);
+	close ($fhr);
+	return 1;
 }
 
-#----------------------------------------------------------------------------
-# from a filename or a directory keep only its path - independently of the current dir
-# my $path = path($filename);
-#----------------------------------------------------------------------------
-sub get_path {
-	my($file) = shift;
-	($file =~ /\//)?($file =~ s/(.*)\/.*$/$1/):($file = ".");
-	return $file;
+#-------------------------------------------------------------------------------
+sub make_choice {
+	my $s = shift;
+	my $desc = shift;
+	my @d = @{$desc};
+	my $d;
+#	print STDERR "   => total=$CNT{$s}{'t'}{'t'}\n" if ($CNT{$s}{'t'}{'t'});
+	if ($CNT{$s}{'a'}{'t'}) {
+#		print STDERR "      Good news, there are $CNT{$s}{'a'}{'t'} annotated ones\n" if ($V);
+		$d = get_maj($s,'a');
+	} elsif ($CNT{$s}{'p'}{'t'}) {
+#		print STDERR "      No annotated, but there are $CNT{$s}{'p'}{'t'} putative ones\n" if ($V);
+		$d = get_maj($s,'p');
+	} else {
+#		print STDERR "      Damn, only $CNT{$s}{'h'}{'t'} hypothetical ones\n" if ($V);
+		$d = get_maj($s,'h');
+	}
+	return $d;
+}
+
+#-------------------------------------------------------------------------------
+sub get_maj {
+	my $s = shift;
+	my $t = shift;
+	my $c = 0;
+	my $maj;
+	foreach my $d (keys $CNT{$s}{$t}) {
+		next if ($d eq "t");
+		$maj=$d if ($CNT{$s}{$t}{$d} > $c);
+		$c = $CNT{$s}{$t}{$d} if ($CNT{$s}{$t}{$d} > $c);
+	}
+	return $maj;
+}		
+
+#-------------------------------------------------------------------------------
+sub path {
+	my $f = shift;
+	($f =~ /\//)?($f =~ s/(.*)\/.*$/$1/):($f = ".");
+	return $f;
 }

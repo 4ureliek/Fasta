@@ -4,35 +4,6 @@ Fasta
 Perl scripts dealing with fasta files.
 
 ========================================================
-fasta_Cut_based-on-Mo.pl
-
-	perl fasta_Cut_based-on-Mo.pl <FastaFile> <File size in Mo>
-	
-	This script will rewrite a fasta file (typically, a genome) in pieces of X Mo (~correlated to the total length of sequences)
-	
-	<FastaFile>       --> (STRING)  Input file in fasta format (typically, a genome)
-	<File size in Mo> --> (INTEGER) To set X, the size of output files in Mo 
-	
-	NB: - if cut results in more than 100 files, you should then replace \"%02d\" by \"%03d\" at line 39.
-	    - if some sequences are longer than the set size in Mo, then files containing them will be bigger anyway since the script won't cut a sequence.
-
-========================================================
-fasta_extract_random.pl [v1.2] 
-fasta_extract_random_pieces.pl [v1.1]
-
-    PURPOSE:
-    These scripts will extract random sequences (fasta_extract_random.pl), 
-    or random sub sequences (fasta_extract_random_pieces.pl)
-    
-	perl fasta_extract_random.pl -i <in.fa> [-n <X>] [-p <X>] [-d] [-u] [-c] [-m <X>] [-nom] [-v] [-h|help]
-	perl fasta_extract_random_pieces.pl -i <in.fa> -l <min,max> [-n <X>] [-p <X>] [-o <out.fa] [-a <X>] [-u] [-s] [-b] [-v] [-h|help]
-    
-    Check their usage (use -h) to see the details of the options. Briefly:
-    -n or -p to set the number of sequences to extract
-    -u to write sequence in upper cases
-    -a to decide allowed overlap (0% to 100%)
-
-========================================================
 
 fasta_FetchSeqs.pl [v1.0]
 
@@ -107,32 +78,69 @@ fasta_FetchSeqs.pl [v1.0]
 
 ========================================================
 
-fasta_keep-unique.pl [v2.0]
+fasta_keep-unique.pl [v3.0]
 
 	WHAT IT DOES
     This script will filter out non unique sequences (based on sequences, not names)
-    The first occurence of a sequence will be kept, so order of input files will matter
+    This v3 now takes descriptions into account, instead of just keeping 
+    the first occurence of a sequence:
+       - if hypotheticals, putative or uncharacterixed, chose other if any
+       - if several descriptions possible, use the majority one
+       - if no majority, use the first one [so if no description, the order of the sequences will matter]
     There will be 2 output files per input file: 
       - sequences that are unique when all files are considered
       - removed sequences
-    Use -cat to get concatenated files
-
+    As well as a tabulated file with the details of removed and kept sequences.  
     
-    perl <scriptname.pl> -i <in.fa> [-all] [-v] [-h|help]
+    perl <scriptname.pl> -i <in.fa> [-v] [-h|help]
      
     MANDATORY	
-    -i <X>   => (STRING) fasta file. If several, separate with ,
-                         Typically: -i inputfile1,inputfile2,inputfileN
+    -i,--in   (STRING)  Fasta file. Can be several files separated by \",\"
+                        Typically: -i myseqs.fa,checkseqs.fa
     
     OPTIONAL
-    -cat     => (BOOL)   To concatenate all unique sequences as well as all removed sequences 
-                         (-> get 2 output files for the run)
-    -out     => (STRING) To rename the output names when -cat is chosen
-                         default = name of the first file in -i is used
-    -rm      => (BOOL)   To remove single files after they are concatenated
-    -v       => (BOOL)   verbose mode, make the script talks to you / version if only option
-    -h|help  => (BOOL)   this usage
+    -o,--out  (STRING)  To rename the output names
+                        Default: name of the first file in -i is used
+    -d,--dir    (BOOL)  Give a directory to -i
+                        Only .fa, .fasta, .faa, .fas, .fna files in it will be loaded
+                        Will ignore *unique* and *removed* files
+    -l,--log    (BOOL)  Print the change log (updates)
+    -v          (BOOL)  Verbose mode, make the script talks to you
+    -v          (BOOL)  Print version if only option
+    -h,--help   (BOOL)  Print this usage
     
+
+========================================================
+
+fasta_Cut_based-on-Mo.pl
+
+	perl fasta_Cut_based-on-Mo.pl <FastaFile> <File size in Mo>
+	
+	This script will rewrite a fasta file (typically, a genome) in pieces of X Mo (~correlated to the total length of sequences)
+	
+	<FastaFile>       --> (STRING)  Input file in fasta format (typically, a genome)
+	<File size in Mo> --> (INTEGER) To set X, the size of output files in Mo 
+	
+	NB: - if cut results in more than 100 files, you should then replace \"%02d\" by \"%03d\" at line 39.
+	    - if some sequences are longer than the set size in Mo, then files containing them will be bigger anyway since the script won't cut a sequence.
+
+========================================================
+
+fasta_extract_random.pl [v1.2] 
+fasta_extract_random_pieces.pl [v1.1]
+
+    PURPOSE:
+    These scripts will extract random sequences (fasta_extract_random.pl), 
+    or random sub sequences (fasta_extract_random_pieces.pl)
+    
+	perl fasta_extract_random.pl -i <in.fa> [-n <X>] [-p <X>] [-d] [-u] [-c] [-f <X>] [-m <X>] [-nom] [-v] [-h|help]
+	perl fasta_extract_random_pieces.pl -i <in.fa> -l <min,max> [-n <X>] [-p <X>] [-o <out.fa] [-a <X>] [-u] [-s] [-b] [-v] [-h|help]
+    
+    Check their usage (use -h) to see the details of the options. Briefly:
+    -n or -p to set the number of sequences to extract
+    -u to write sequence in upper cases
+    -a to decide allowed overlap (0% to 100%)
+
 ========================================================
 
 fasta_split_blast_parse_P.pl [v1.1]
