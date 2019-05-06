@@ -11,7 +11,7 @@ use Carp;
 use Getopt::Long;
 use Bio::SeqIO;
 
-my $version = "2.2";
+my $version = "2.3";
 my $scriptname = "FetchSeqs.pl";
 
 # UPDATES
@@ -24,8 +24,10 @@ my $changelog = "
 #             Usage update
 #   - v2.1 = 12 Apr 2016 
 #             fastq option
-#   - v2.1 = 13 Apr 2016 
+#   - v2.2 = 13 Apr 2016 
 #             grep option; faster indead when very large fastq file, but still super slow
+#   - v2.3 = 02 Feb 2019 
+#             deal with ( ) in names
 
 # TO DO: a bio db and not a SeqIO
 \n";
@@ -78,10 +80,10 @@ my $usage = "\nUsage [$version]:
                         Also, this makes irrelevant the use of these options:
                         -desc, -both, -regex, -inv, -noc
     -desc   => (BOOL)   to look for match in the description and not the header
-    -both   => (BOOL)   to look into both headers and description   
+    -both   => (BOOL)   to look for match in both headers and description   
     -regex  => (BOOL)   to look for containing the word and not an exact match
                         Special characters in names or descriptions will be an issue;
-                        the only ones that are taken care of are: | / . [ ] 
+                        the only ones that are taken care of are: | / . [ ] ( )
     -inv    => (BOOL)   to extract what DOES NOT match
     -noc    => (BOOL)   to ignore case in matching  
     -chlog  => (BOOL)   print updates
@@ -211,12 +213,14 @@ sub extract_seqs {
 				$w =~ s/\//\\\//g;
 				$w =~ s/\[/\\\[/g;
 				$w =~ s/\]/\\\]/g;
+				$w =~ s/\(/\\\(/g;
+				$w =~ s/\)/\\\)/g;
 			}	
 			my ($wi,$wd) = ($w,$w);
 			($wi,$wd) = ($1,$2) if ($w =~/^(\S+)?\s+(.*)$/); #Get id and desc if there is any space
 			$w = lc($w) if ($noc eq "y"); 
 			
-			#Now check
+			#Now check			
 			if ($regex eq "na") {
 				if ((($d eq "n") && ($both eq "n") && ($id eq $w)) || (($d eq "y") && ($desc eq $w)) || (($both eq "y") && ($id eq $wi) && ($desc eq $wd))) {
 					if ($inv eq "n") {
